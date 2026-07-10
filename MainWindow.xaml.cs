@@ -778,7 +778,7 @@ namespace WinLog
                 // 1. Log Cleared (104, 1102)
                 if (ev.EventId == "104" || ev.EventId == "1102")
                 {
-                    findings.Add($"<strong>[طمس الأدلة الجنائية - Defense Evasion]</strong> تم رصد مسح كامل لسجلات الأحداث في {ev.TimeCreated:yyyy-MM-dd HH:mm:ss} بواسطة المصدر ({ev.Source}). المهاجمون يمسحون السجلات لإخفاء تحركاتهم.");
+                    findings.Add($"<strong>[Defense Evasion - Log Cleared]</strong> A complete clearing of event logs was detected at {ev.TimeCreated:yyyy-MM-dd HH:mm:ss} by source ({ev.Source}). Attackers often clear logs to hide their activities.");
                 }
 
                 // 2. Brute Force Detection: Multiple Failed Logons (4625) followed by a Success (4624)
@@ -792,7 +792,7 @@ namespace WinLog
                         if (chronologicalEvents[j].EventId == "4625") failedCount++;
                         else if (chronologicalEvents[j].EventId == "4624")
                         {
-                            findings.Add($"<strong>[محاولة اقتحام بالقوة - Brute Force Attack]</strong> تم رصد {failedCount} محاولات دخول فاشلة تلاها دخول ناجح ومؤكد للحساب ({EscapeHtml(chronologicalEvents[j].User)}) خلال 5 دقائق (وقت الدخول الناجح: {chronologicalEvents[j].TimeCreated:yyyy-MM-dd HH:mm:ss}). هذا نمط اختراق وتخمين كلمات مرور ناجح.");
+                            findings.Add($"<strong>[Brute Force Attack - Password Guessing]</strong> Detected {failedCount} failed logon attempts followed by a successful logon for account ({EscapeHtml(chronologicalEvents[j].User)}) within 5 minutes (Successful Logon Time: {chronologicalEvents[j].TimeCreated:yyyy-MM-dd HH:mm:ss}). This pattern indicates a successful password brute-force attempt.");
                             i = j; // Advance outer loop
                             break;
                         }
@@ -808,7 +808,7 @@ namespace WinLog
                     {
                         if (chronologicalEvents[j].EventId == "7045")
                         {
-                            findings.Add($"<strong>[تثبيت آلية بقاء خبيثة - Persistence Mechanism]</strong> تم إنشاء خدمة نظام جديدة ({EscapeHtml(chronologicalEvents[j].MessageSummary)}) في {chronologicalEvents[j].TimeCreated:yyyy-MM-dd HH:mm:ss} بعد {Math.Round((chronologicalEvents[j].TimeCreated - ev.TimeCreated).TotalSeconds)} ثانية فقط من تسجيل دخول ناجح للحساب ({EscapeHtml(ev.User)}). يشير هذا إلى احتمال قيام مهاجم بتثبيت باب خلفي (Backdoor) بعد الدخول مباشرة.");
+                            findings.Add($"<strong>[Persistence Mechanism - New Service]</strong> A new system service ({EscapeHtml(chronologicalEvents[j].MessageSummary)}) was created at {chronologicalEvents[j].TimeCreated:yyyy-MM-dd HH:mm:ss}, just {Math.Round((chronologicalEvents[j].TimeCreated - ev.TimeCreated).TotalSeconds)} seconds after a successful logon for account ({EscapeHtml(ev.User)}). This suggests that an attacker may have installed a backdoor immediately post-logon.");
                         }
                         j++;
                     }
@@ -822,7 +822,7 @@ namespace WinLog
                     {
                         if (chronologicalEvents[j].EventId == "4104")
                         {
-                            findings.Add($"<strong>[تنفيذ سكريبتات مشبوهة - Script-Based Execution]</strong> تم تنفيذ سكريبت PowerShell في {chronologicalEvents[j].TimeCreated:yyyy-MM-dd HH:mm:ss} بعد دخول المستخدم ({EscapeHtml(ev.User)}) بـ {Math.Round((chronologicalEvents[j].TimeCreated - ev.TimeCreated).TotalSeconds)} ثانية. يوصى بمراجعة محتوى السكريبت المنفذ للتحقق من سلامته.");
+                            findings.Add($"<strong>[Script-Based Execution - Suspicious Script]</strong> A PowerShell script was executed at {chronologicalEvents[j].TimeCreated:yyyy-MM-dd HH:mm:ss}, {Math.Round((chronologicalEvents[j].TimeCreated - ev.TimeCreated).TotalSeconds)} seconds after user ({EscapeHtml(ev.User)}) logged on. It is recommended to review the script content for potential malicious commands.");
                         }
                         j++;
                     }
@@ -831,7 +831,7 @@ namespace WinLog
                 // 5. System Shutdown / Restart initiated by a process or user
                 if (ev.EventId == "1074")
                 {
-                    findings.Add($"<strong>[إعادة تشغيل النظام - System Reboot]</strong> تم طلب إيقاف أو إعادة تشغيل النظام في {ev.TimeCreated:yyyy-MM-dd HH:mm:ss}. التفاصيل: {EscapeHtml(ev.MessageSummary)}.");
+                    findings.Add($"<strong>[System Reboot - Shutdown/Restart]</strong> A system shutdown or restart was initiated at {ev.TimeCreated:yyyy-MM-dd HH:mm:ss}. Details: {EscapeHtml(ev.MessageSummary)}.");
                 }
             }
 
@@ -903,10 +903,10 @@ namespace WinLog
             sb.AppendLine("    .badge-info { background-color: #3b82f6; }");
             sb.AppendLine("    .badge-success { background-color: #10b981; }");
             sb.AppendLine("    .badge-other { background-color: #64748b; }");
-            sb.AppendLine("    .notes-box { font-style: italic; color: #cbd5e1; white-space: pre-wrap; font-size: 13px; background: #0f172a; padding: 12px; border-right: 4px solid #38bdf8; border-radius: 4px; }");
-            sb.AppendLine("    .narrative-box { background-color: #451a03; border: 1px solid #78350f; border-right: 4px solid #f59e0b; padding: 15px; border-radius: 6px; }");
-            sb.AppendLine("    .narrative-title { font-family: 'Cairo', sans-serif; font-weight: 700; color: #f59e0b; font-size: 14.5px; border-bottom: 1px dashed #78350f; padding-bottom: 5px; text-align: right; direction: rtl; }");
-            sb.AppendLine("    .narrative-list { padding-right: 20px; line-height: 1.7; text-align: right; direction: rtl; font-family: 'Cairo', sans-serif; }");
+            sb.AppendLine("    .notes-box { font-style: italic; color: #cbd5e1; white-space: pre-wrap; font-size: 13px; background: #0f172a; padding: 12px; border-left: 4px solid #38bdf8; border-radius: 4px; }");
+            sb.AppendLine("    .narrative-box { background-color: #451a03; border: 1px solid #78350f; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 6px; }");
+            sb.AppendLine("    .narrative-title { font-weight: 700; color: #f59e0b; font-size: 14.5px; border-bottom: 1px dashed #78350f; padding-bottom: 5px; }");
+            sb.AppendLine("    .narrative-list { padding-left: 20px; line-height: 1.7; }");
             sb.AppendLine("    .narrative-list li { margin-bottom: 10px; font-size: 13px; color: #fef3c7; }");
             sb.AppendLine("    /* SIEM Timeline Styling */");
             sb.AppendLine("    .timeline {");
@@ -1022,7 +1022,7 @@ namespace WinLog
             if (findings.Any())
             {
                 sb.AppendLine("      <div class=\"narrative-box\">");
-                sb.AppendLine("        <div class=\"narrative-title\">⚠️ تحليل أنماط الهجوم والتهديدات الأمنية المرتبطة بالملف:</div>");
+                sb.AppendLine("        <div class=\"narrative-title\">⚠️ Detected Attack Patterns &amp; Threat Intelligence Findings:</div>");
                 sb.AppendLine("        <ul class=\"narrative-list\">");
                 foreach (var finding in findings.Distinct())
                 {

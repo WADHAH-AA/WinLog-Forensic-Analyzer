@@ -33,12 +33,12 @@ WinLog supports importing Windows Event Logs exported in various formats:
 * **`.csv`** (Comma-separated logs)
 * **`.xlsx` / `.xls`** (Microsoft Excel spreadsheets)
 
-### 3. Timeline Intelligence & Attack Correlation (Arabic Warnings)
-The correlation engine automatically scans the chronological flow of logs to detect common attacker tactics, techniques, and procedures (TTPs), presenting them in a clear Arabic narrative box:
-* **Defense Evasion (طمس الأدلة الجنائية)**: Detects log clearance events (`Event 104`, `1102`).
-* **Brute Force Detection (محاولة اقتحام بالقوة)**: Detects multiple failed logons (`Event 4625`) preceding a successful logon (`Event 4624`).
-* **Persistence Mechanism (تثبيت آلية بقاء خبيثة)**: Detects rapid Windows service creations (`Event 7045`) immediately after successful authentication.
-* **Script-Based Execution (تنفيذ سكريبتات مشبوهة)**: Detects execution of PowerShell blocks (`Event 4104`) in tight timelines.
+### 3. Timeline Intelligence & Attack Correlation Findings
+The correlation engine automatically scans the chronological flow of logs to detect common attacker tactics, techniques, and procedures (TTPs), presenting them in a clear threat intelligence narrative box:
+* **Defense Evasion**: Detects log clearance events (`Event 104`, `1102`).
+* **Brute Force Detection**: Detects multiple failed logons (`Event 4625`) preceding a successful logon (`Event 4624`).
+* **Persistence Mechanism**: Detects rapid Windows service creations (`Event 7045`) immediately after successful authentication.
+* **Script-Based Execution**: Detects execution of PowerShell blocks (`Event 4104`) in tight timelines.
 
 ### 4. Interactive Dark-Mode SIEM HTML Dashboard
 Export the active filtered timeline into a premium **Dark-Mode SIEM Dashboard** HTML report:
