@@ -1,0 +1,469 @@
+<Window x:Class="WinLog.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="WinLog Forensic Importer &amp; Analyzer" Height="820" Width="1380"
+        Background="#f3f4f6" Foreground="#111827"
+        WindowStartupLocation="CenterScreen">
+    
+    <Window.Resources>
+        <!-- Clean, High-Contrast Official Windows Diagnostic Style Sheet (Light Theme) -->
+        <SolidColorBrush x:Key="BgPanel" Color="#f1f5f9"/>
+        <SolidColorBrush x:Key="BgWhite" Color="#ffffff"/>
+        <SolidColorBrush x:Key="BorderGray" Color="#cbd5e1"/>
+        <SolidColorBrush x:Key="TextDark" Color="#0f172a"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#475569"/>
+        
+        <Style TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <Style x:Key="HeaderTitle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="#0f172a"/>
+        </Style>
+
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Margin" Value="0,10,0,5"/>
+        </Style>
+
+        <Style x:Key="ControlLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Margin" Value="0,5,0,2"/>
+        </Style>
+
+        <!-- Standard Windows Button Styling -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#f8fafc"/>
+            <Setter Property="Foreground" Value="#0f172a"/>
+            <Setter Property="BorderBrush" Value="#cbd5e1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Resources>
+                <Style TargetType="Border">
+                    <Setter Property="CornerRadius" Value="2"/>
+                </Style>
+            </Style.Resources>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#e2e8f0"/>
+                    <Setter Property="BorderBrush" Value="#94a3b8"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#0284c7"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#0369a1"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#0369a1"/>
+                    <Setter Property="BorderBrush" Value="#075985"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Form Inputs -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#ffffff"/>
+            <Setter Property="Foreground" Value="#0f172a"/>
+            <Setter Property="BorderBrush" Value="#cbd5e1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="CaretBrush" Value="#0f172a"/>
+            <Setter Property="SelectionBrush" Value="#bae6fd"/>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#ffffff"/>
+            <Setter Property="Foreground" Value="#0f172a"/>
+            <Setter Property="BorderBrush" Value="#cbd5e1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4"/>
+        </Style>
+
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="#ffffff"/>
+            <Setter Property="BorderBrush" Value="#cbd5e1"/>
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Header" Value="{Binding Header}"/>
+            <Setter Property="Background" Value="#f1f5f9"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="BorderBrush" Value="#cbd5e1"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#ffffff"/>
+                    <Setter Property="Foreground" Value="#0f172a"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- Header / Toolbar -->
+            <RowDefinition Height="*"/>    <!-- Main Workspace -->
+            <RowDefinition Height="Auto"/> <!-- Status Bar -->
+        </Grid.RowDefinitions>
+
+        <!-- 1. Header / Toolbar -->
+        <Border Grid.Row="0" Background="#f1f5f9" BorderBrush="#cbd5e1" BorderThickness="0,0,0,1" Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="📁 WINLOG FORENSIC IMPORTER" Style="{StaticResource HeaderTitle}" Foreground="#0284c7" FontWeight="Bold"/>
+                    <Separator Width="1" Height="16" Background="#cbd5e1" Margin="15,0"/>
+                    <Button Content="Import Log File..." Click="OnImportClicked" Style="{StaticResource PrimaryButton}" Padding="16,6"/>
+                    <Button Content="Clear Data" Click="OnClearDataClicked" Padding="12,6" Margin="5,0,0,0"/>
+                    <TextBlock x:Name="ActiveFileText" Text="Active File: None" Foreground="#475569" FontSize="11" Margin="15,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Analyst Workstation: " Foreground="#475569" FontSize="11" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="MachineNameText" Text="LOCAL-HOST" Foreground="#0f172a" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 2. Main Workspace -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250"/> <!-- Sidebar Filters -->
+                <ColumnDefinition Width="*"/>   <!-- Main Data Grid -->
+                <ColumnDefinition Width="420"/> <!-- Side Detail Panel -->
+            </Grid.ColumnDefinitions>
+
+            <!-- Column 0: Sidebar Filters -->
+            <Border Grid.Column="0" Background="#f8fafc" BorderBrush="#cbd5e1" BorderThickness="0,0,1,0" Padding="12">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- Filter Actions -->
+                        <TextBlock Text="FILTER RESULTS" Style="{StaticResource SectionHeader}"/>
+                        
+                        <TextBlock Text="Search Content" Style="{StaticResource ControlLabel}"/>
+                        <TextBox x:Name="SearchTextBox" TextChanged="OnFilterChanged" Height="28"/>
+
+                        <TextBlock Text="Event ID" Style="{StaticResource ControlLabel}"/>
+                        <TextBox x:Name="FilterEventIdTextBox" TextChanged="OnFilterChanged" Height="28"/>
+
+                        <TextBlock Text="Severity Level" Style="{StaticResource ControlLabel}"/>
+                        <ComboBox x:Name="FilterLevelComboBox" SelectionChanged="OnFilterChanged" Height="28">
+                            <ComboBoxItem Content="All Levels" IsSelected="True"/>
+                            <ComboBoxItem Content="Critical"/>
+                            <ComboBoxItem Content="Error"/>
+                            <ComboBoxItem Content="Warning"/>
+                            <ComboBoxItem Content="Information"/>
+                            <ComboBoxItem Content="SuccessAudit"/>
+                            <ComboBoxItem Content="FailureAudit"/>
+                        </ComboBox>
+
+                        <Button Content="Reset Filters" Click="OnResetFiltersClicked" Margin="0,15,0,0" Padding="5,6"/>
+
+                        <Separator Background="#cbd5e1" Margin="0,15"/>
+
+                        <!-- Forensic Presets -->
+                        <TextBlock Text="FORENSIC ALERTS PRESETS" Style="{StaticResource SectionHeader}"/>
+                        <StackPanel>
+                            <Button x:Name="PresetClearLogsBtn" Content="🛡️ Log Clear Actions" Click="OnPresetClearLogs" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                            <Button x:Name="PresetFailedLogonsBtn" Content="🔑 Failed Logons (4625)" Click="OnPresetFailedLogons" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                            <Button x:Name="PresetSuccessfulLogonsBtn" Content="🔓 Successful Logons (4624)" Click="OnPresetSuccessfulLogons" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                            <Button x:Name="PresetServiceInstallsBtn" Content="⚙️ Service Persistence (7045)" Click="OnPresetServiceInstalls" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                            <Button x:Name="PresetAccountChangesBtn" Content="👤 Account Alterations (4720+)" Click="OnPresetAccountChanges" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                            <Button x:Name="PresetPowerShellBtn" Content="📜 PowerShell Block Execution" Click="OnPresetPowerShell" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                            <Button x:Name="PresetProcessExecutionBtn" Content="🚀 Process Creation (4688)" Click="OnPresetProcessExecution" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                            <Button x:Name="PresetSystemPowerBtn" Content="🔌 Startup / Shutdown (6005+)" Click="OnPresetSystemPower" IsEnabled="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,4"/>
+                        </StackPanel>
+
+                        <Separator x:Name="DynamicFiltersSeparator" Background="#cbd5e1" Margin="0,15" Visibility="Collapsed"/>
+
+                        <!-- Dynamic Quick Filters -->
+                        <TextBlock x:Name="DynamicQuickFiltersHeader" Text="DYNAMIC QUICK FILTERS" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
+                        <StackPanel x:Name="DynamicQuickFiltersPanel" Visibility="Collapsed">
+                            <TextBlock Text="TOP EVENT IDs" FontSize="10" Foreground="#475569" FontWeight="Bold" Margin="0,5,0,3"/>
+                            <StackPanel x:Name="TopEventIdsPanel" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="TOP PROVIDERS / SOURCES" FontSize="10" Foreground="#475569" FontWeight="Bold" Margin="0,5,0,3"/>
+                            <StackPanel x:Name="TopSourcesPanel" Margin="0,0,0,5"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Column 1: Main Data Grid -->
+            <Grid Grid.Column="1" Margin="8">
+                <DataGrid x:Name="EventsDataGrid" 
+                          AutoGenerateColumns="False" 
+                          IsReadOnly="True" 
+                          SelectionMode="Single"
+                          SelectionChanged="OnEventSelectionChanged"
+                          RowHeight="22"
+                          Background="#ffffff" 
+                          RowBackground="#ffffff" 
+                          AlternatingRowBackground="#f8fafc"
+                          Foreground="#0f172a"
+                          BorderBrush="#cbd5e1" 
+                          GridLinesVisibility="All"
+                          HorizontalGridLinesBrush="#e2e8f0"
+                          VerticalGridLinesBrush="#e2e8f0"
+                          HeadersVisibility="Column"
+                          CanUserResizeColumns="True"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          RowHeaderWidth="0">
+                    
+                    <DataGrid.Resources>
+                        <!-- Grid Column Header styling: Light Slate Gray -->
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#e2e8f0"/>
+                            <Setter Property="Foreground" Value="#0f172a"/>
+                            <Setter Property="Padding" Value="8,5"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="BorderBrush" Value="#cbd5e1"/>
+                            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                        </Style>
+                        <!-- Row Selection Style: Subtle Standard Blue -->
+                        <Style TargetType="DataGridRow">
+                            <Style.Resources>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#bae6fd"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#0f172a"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#e2e8f0"/>
+                            </Style.Resources>
+                        </Style>
+                    </DataGrid.Resources>
+
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Index" Binding="{Binding RecordId}" Width="60"/>
+                        
+                        <!-- Severity Level Column with colored text tags (clean and professional) -->
+                        <DataGridTemplateColumn Header="Level" Width="90" SortMemberPath="Level">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Level}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="5,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#475569"/> <!-- Default Information Gray -->
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Level}" Value="Critical">
+                                                        <Setter Property="Foreground" Value="#b91c1c"/> <!-- Red -->
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Level}" Value="Error">
+                                                        <Setter Property="Foreground" Value="#dc2626"/> <!-- Red -->
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Level}" Value="Warning">
+                                                        <Setter Property="Foreground" Value="#d97706"/> <!-- Orange -->
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Level}" Value="FailureAudit">
+                                                        <Setter Property="Foreground" Value="#b91c1c"/> <!-- Red -->
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Level}" Value="SuccessAudit">
+                                                        <Setter Property="Foreground" Value="#15803d"/> <!-- Green -->
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding TimeCreated, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}" Width="135"/>
+                        <DataGridTextColumn Header="Event ID" Binding="{Binding EventId}" Width="75" FontWeight="Bold"/>
+                        <DataGridTextColumn Header="Provider / Source" Binding="{Binding Source}" Width="150"/>
+                        <DataGridTextColumn Header="User SID / Account" Binding="{Binding User}" Width="130"/>
+                        
+                        <DataGridTemplateColumn Header="Description / Summary" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                     <TextBlock Text="{Binding MessageSummary}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="5,0"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+
+            <!-- Column 2: Side Detail Panel -->
+            <Border Grid.Column="2" Background="#f8fafc" BorderBrush="#cbd5e1" BorderThickness="1,0,0,0" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Selected Meta -->
+                        <RowDefinition Height="*"/>    <!-- Detailed Tabs -->
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="EVENT DETAILS" Style="{StaticResource SectionHeader}"/>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Event ID:" Foreground="#475569" FontWeight="SemiBold" Width="70"/>
+                            <TextBlock x:Name="DetailEventIdText" Grid.Column="1" Text="None" Foreground="#0284c7" FontWeight="Bold" FontSize="13"/>
+                        </Grid>
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Source:" Foreground="#475569" Width="70"/>
+                            <TextBlock x:Name="DetailProviderText" Grid.Column="1" Text="None" TextWrapping="Wrap"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <TabControl Grid.Row="1" Background="#ffffff" BorderBrush="#cbd5e1" BorderThickness="1">
+                        <!-- Tab 1: Forensic Guidance -->
+                        <TabItem Header="🔍 Forensic Guidance">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
+                                <StackPanel>
+                                    <Border x:Name="ForensicBadge" CornerRadius="2" Padding="8,6" Background="#f1f5f9" BorderBrush="#cbd5e1" BorderThickness="1" Margin="0,0,0,10">
+                                        <StackPanel>
+                                            <TextBlock x:Name="ForensicTitleText" Text="Generic Event" FontWeight="Bold" FontSize="12" Foreground="#0f172a" TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="ForensicCategoryText" Text="UNSPECIFIED CATEGORY" FontSize="9" Foreground="#0284c7" Margin="0,3,0,0" FontWeight="SemiBold"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <TextBlock Text="SECURITY IMPLICATION" FontSize="10" Foreground="#475569" FontWeight="Bold" Margin="0,5,0,3"/>
+                                    <Border Background="#f8fafc" Padding="8" CornerRadius="2" BorderBrush="#e2e8f0" BorderThickness="1">
+                                        <TextBlock x:Name="ForensicDescText" Text="No pre-configured security alert definitions for this Event ID." TextWrapping="Wrap" FontSize="11" Foreground="#334155"/>
+                                    </Border>
+
+                                    <TextBlock Text="INVESTIGATION PLAYBOOK" FontSize="10" Foreground="#475569" FontWeight="Bold" Margin="0,15,0,3"/>
+                                    <Border Background="#f8fafc" Padding="8" CornerRadius="2" BorderBrush="#e2e8f0" BorderThickness="1">
+                                        <TextBlock x:Name="ForensicStepsText" Text="Analyze event parameters and message context." TextWrapping="Wrap" FontSize="11" Foreground="#334155"/>
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+                        
+                        <!-- Tab 2: Description (General look) -->
+                        <TabItem Header="💬 Description">
+                            <Grid Background="#ffffff">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/> <!-- Splitter line -->
+                                    <RowDefinition Height="Auto"/> <!-- Metadata Grid -->
+                                </Grid.RowDefinitions>
+                                
+                                <TextBox x:Name="DetailMessageTextBox" Grid.Row="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="#ffffff" Foreground="#0f172a" BorderThickness="0" FontFamily="Segoe UI" FontSize="11" Margin="8,8,8,4"/>
+                                
+                                <Separator Grid.Row="1" Background="#cbd5e1" Margin="8,0"/>
+                                
+                                <Grid Grid.Row="2" Margin="8,4,8,8" KeyboardNavigation.TabNavigation="None">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    
+                                    <Grid.Resources>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="FontSize" Value="10.5"/>
+                                            <Setter Property="Margin" Value="2,2"/>
+                                        </Style>
+                                        <Style x:Key="MetaLabel" TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#475569"/>
+                                            <Setter Property="Width" Value="80"/>
+                                        </Style>
+                                        <Style x:Key="MetaValue" TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#0f172a"/>
+                                            <Setter Property="FontWeight" Value="Normal"/>
+                                        </Style>
+                                    </Grid.Resources>
+                                    
+                                    <!-- Row 0 -->
+                                    <TextBlock Text="Log Name:" Style="{StaticResource MetaLabel}" Grid.Row="0" Grid.Column="0"/>
+                                    <TextBlock x:Name="MetaLogNameText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="0" Grid.Column="1"/>
+                                    <TextBlock Text="Logged:" Style="{StaticResource MetaLabel}" Grid.Row="0" Grid.Column="2" Margin="10,2,2,2"/>
+                                    <TextBlock x:Name="MetaLoggedText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="0" Grid.Column="3"/>
+
+                                    <!-- Row 1 -->
+                                    <TextBlock Text="Source:" Style="{StaticResource MetaLabel}" Grid.Row="1" Grid.Column="0"/>
+                                    <TextBlock x:Name="MetaSourceText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Task Category:" Style="{StaticResource MetaLabel}" Grid.Row="1" Grid.Column="2" Margin="10,2,2,2"/>
+                                    <TextBlock x:Name="MetaTaskCategoryText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="1" Grid.Column="3" TextWrapping="Wrap"/>
+
+                                    <!-- Row 2 -->
+                                    <TextBlock Text="Event ID:" Style="{StaticResource MetaLabel}" Grid.Row="2" Grid.Column="0"/>
+                                    <TextBlock x:Name="MetaEventIdText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="2" Grid.Column="1"/>
+                                    <TextBlock Text="Keywords:" Style="{StaticResource MetaLabel}" Grid.Row="2" Grid.Column="2" Margin="10,2,2,2"/>
+                                    <TextBlock x:Name="MetaKeywordsText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="2" Grid.Column="3" TextWrapping="Wrap"/>
+
+                                    <!-- Row 3 -->
+                                    <TextBlock Text="Level:" Style="{StaticResource MetaLabel}" Grid.Row="3" Grid.Column="0"/>
+                                    <TextBlock x:Name="MetaLevelText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="3" Grid.Column="1"/>
+                                    <TextBlock Text="Computer:" Style="{StaticResource MetaLabel}" Grid.Row="3" Grid.Column="2" Margin="10,2,2,2"/>
+                                    <TextBlock x:Name="MetaComputerText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="3" Grid.Column="3" TextWrapping="Wrap"/>
+
+                                    <!-- Row 4 -->
+                                    <TextBlock Text="User:" Style="{StaticResource MetaLabel}" Grid.Row="4" Grid.Column="0"/>
+                                    <TextBlock x:Name="MetaUserText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="4" Grid.Column="1" TextWrapping="Wrap"/>
+                                    <TextBlock Text="OpCode:" Style="{StaticResource MetaLabel}" Grid.Row="4" Grid.Column="2" Margin="10,2,2,2"/>
+                                    <TextBlock x:Name="MetaOpcodeText" Text="None" Style="{StaticResource MetaValue}" Grid.Row="4" Grid.Column="3"/>
+                                </Grid>
+                            </Grid>
+                        </TabItem>
+
+                        <!-- Tab 3: Raw / XML Data -->
+                        <TabItem Header="💻 Raw / XML">
+                            <Border Padding="10">
+                                <TextBox x:Name="DetailXmlTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="#ffffff" Foreground="#0284c7" BorderThickness="0" FontFamily="Consolas" FontSize="10"/>
+                            </Border>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 3. Status Bar -->
+        <Border Grid.Row="2" Background="#f1f5f9" BorderBrush="#cbd5e1" BorderThickness="0,1,0,0" Padding="12,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusCountText" Text="No file loaded." Foreground="#475569" FontSize="11" Margin="0,0,15,0"/>
+                    <TextBlock x:Name="StatusLoadTimeText" Text="" Foreground="#475569" FontSize="11"/>
+                </StackPanel>
+
+                <TextBlock Text="Developed by Wadhah Anaam" Grid.Column="1" Foreground="#64748b" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip="WinLog Forensic Importer &amp; Analyzer Creator"/>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <TextBlock Text="Export Active Grid:" Foreground="#475569" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Button Content="CSV Format" Click="OnExportCsvClicked" Padding="10,3" FontSize="11"/>
+                    <Button Content="JSON Format" Click="OnExportJsonClicked" Padding="10,3" Margin="5,0,0,0" FontSize="11"/>
+                    <Button Content="HTML Report" Click="OnExportHtmlReportClicked" Padding="10,3" Margin="5,0,0,0" FontSize="11" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

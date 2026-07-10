@@ -1,0 +1,17 @@
+## Ignore Visual Studio & .NET build artifacts
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+## Ignore compiled archives and temporary files
+*.zip
+*.rar
+*.log
+*.tmp
+*.pdf
+.agents/
+.gemini/
