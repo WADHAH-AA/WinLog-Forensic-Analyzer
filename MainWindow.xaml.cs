@@ -73,7 +73,7 @@ namespace WinLog
                     sw.Stop();
                     try
                     {
-                        File.WriteAllText(@"c:\Users\pc\Desktop\WinLog\error_log.txt", ex.ToString());
+                        File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "error_log.txt"), ex.ToString());
                     }
                     catch { }
                     MessageBox.Show($"Failed to parse log file(s):\n{ex.Message}\n\nFull details written to error_log.txt in your workspace.", "Parser Error", MessageBoxButton.OK, MessageBoxImage.Error);
