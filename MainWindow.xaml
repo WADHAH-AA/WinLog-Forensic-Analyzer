@@ -176,6 +176,31 @@
                             <ComboBoxItem Content="FailureAudit"/>
                         </ComboBox>
 
+                        <TextBlock Text="Log File Source" Style="{StaticResource ControlLabel}"/>
+                        <ComboBox x:Name="FilterLogFileComboBox" SelectionChanged="OnFilterChanged" Height="28">
+                            <ComboBoxItem Content="All Files" IsSelected="True"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Start Date &amp; Time" Style="{StaticResource ControlLabel}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <DatePicker x:Name="StartDatePicker" SelectedDateChanged="OnFilterChanged" Height="28"/>
+                            <TextBox x:Name="StartTimeTextBox" Grid.Column="1" Text="00:00:00" TextChanged="OnFilterChanged" Height="28" Margin="4,0,0,0" VerticalContentAlignment="Center"/>
+                        </Grid>
+
+                        <TextBlock Text="End Date &amp; Time" Style="{StaticResource ControlLabel}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <DatePicker x:Name="EndDatePicker" SelectedDateChanged="OnFilterChanged" Height="28"/>
+                            <TextBox x:Name="EndTimeTextBox" Grid.Column="1" Text="23:59:59" TextChanged="OnFilterChanged" Height="28" Margin="4,0,0,0" VerticalContentAlignment="Center"/>
+                        </Grid>
+
                         <Button Content="Reset Filters" Click="OnResetFiltersClicked" Margin="0,15,0,0" Padding="5,6"/>
 
                         <Separator Background="#cbd5e1" Margin="0,15"/>
@@ -287,7 +312,8 @@
 
                         <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding TimeCreated, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}" Width="135"/>
                         <DataGridTextColumn Header="Event ID" Binding="{Binding EventId}" Width="75" FontWeight="Bold"/>
-                        <DataGridTextColumn Header="Provider / Source" Binding="{Binding Source}" Width="150"/>
+                        <DataGridTextColumn Header="Provider / Source" Binding="{Binding Source}" Width="130"/>
+                        <DataGridTextColumn Header="Log File" Binding="{Binding LogName}" Width="120"/>
                         <DataGridTextColumn Header="User SID / Account" Binding="{Binding User}" Width="130"/>
                         
                         <DataGridTemplateColumn Header="Description / Summary" Width="*">

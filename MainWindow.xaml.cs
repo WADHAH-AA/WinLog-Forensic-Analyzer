@@ -30,8 +30,9 @@ namespace WinLog
             var ofd = new OpenFileDialog
             {
                 Title = "Select Log File(s) to Analyze",
-                Filter = "All Supported Logs|*.evtx;*.json;*.xml;*.csv;*.xlsx;*.xls" +
+                Filter = "All Supported Logs|*.evtx;*.json;*.xml;*.csv;*.xlsx;*.xls;*.log;*.txt" +
                          "|Windows Event Log (*.evtx)|*.evtx" +
+                         "|Web & Application Text Logs (*.log; *.txt)|*.log;*.txt" +
                          "|JSON Log Array (*.json)|*.json" +
                          "|XML Log File (*.xml)|*.xml" +
                          "|CSV Spreadsheets (*.csv)|*.csv" +
@@ -64,6 +65,7 @@ namespace WinLog
                     sw.Stop();
                     StatusLoadTimeText.Text = $"Parsed {ofd.FileNames.Length} files in: {sw.ElapsedMilliseconds} ms";
                     UpdateActiveFileLabel();
+                    UpdateLogFileComboBox();
                     UpdatePresetButtonsState();
                     UpdateDynamicQuickFilters();
                     ApplyFilters();
@@ -130,6 +132,39 @@ namespace WinLog
                 }
             }
 
+            // 4. Log File Source Filter
+            if (FilterLogFileComboBox != null && FilterLogFileComboBox.SelectedItem is ComboBoxItem logFileItem)
+            {
+                string? selectedLogFile = logFileItem.Content?.ToString();
+                if (selectedLogFile != null && selectedLogFile != "All Files")
+                {
+                    filtered = filtered.Where(e => e.LogName.Equals(selectedLogFile, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+
+            // 5. Date and Time Range Filter
+            if (StartDatePicker != null && StartDatePicker.SelectedDate.HasValue)
+            {
+                DateTime startDate = StartDatePicker.SelectedDate.Value;
+                string startTimeStr = StartTimeTextBox != null ? StartTimeTextBox.Text.Trim() : "00:00:00";
+                if (TimeSpan.TryParse(startTimeStr, out TimeSpan startTime))
+                {
+                    startDate = startDate.Date + startTime;
+                }
+                filtered = filtered.Where(e => e.TimeCreated >= startDate);
+            }
+
+            if (EndDatePicker != null && EndDatePicker.SelectedDate.HasValue)
+            {
+                DateTime endDate = EndDatePicker.SelectedDate.Value;
+                string endTimeStr = EndTimeTextBox != null ? EndTimeTextBox.Text.Trim() : "23:59:59";
+                if (TimeSpan.TryParse(endTimeStr, out TimeSpan endTime))
+                {
+                    endDate = endDate.Date + endTime;
+                }
+                filtered = filtered.Where(e => e.TimeCreated <= endDate);
+            }
+
             _filteredEvents = filtered.ToList();
             EventsDataGrid.ItemsSource = _filteredEvents;
             StatusCountText.Text = (_currentFilePaths == null || _currentFilePaths.Count == 0) 
@@ -161,6 +196,22 @@ namespace WinLog
                 string names = string.Join(", ", _currentFilePaths.Select(Path.GetFileName));
                 if (names.Length > 60) names = names.Substring(0, 57) + "...";
                 ActiveFileText.Text = $"Active File: [Multiple Files] ({names}) - {sizeStr}";
+            }
+        }
+
+        private void UpdateLogFileComboBox()
+        {
+            if (FilterLogFileComboBox == null) return;
+
+            FilterLogFileComboBox.Items.Clear();
+            FilterLogFileComboBox.Items.Add(new ComboBoxItem { Content = "All Files", IsSelected = true });
+
+            if (_currentFilePaths != null && _currentFilePaths.Count > 0)
+            {
+                foreach (var path in _currentFilePaths)
+                {
+                    FilterLogFileComboBox.Items.Add(new ComboBoxItem { Content = Path.GetFileName(path) });
+                }
             }
         }
 
@@ -200,6 +251,11 @@ namespace WinLog
             if (SearchTextBox != null) SearchTextBox.Text = string.Empty;
             if (FilterEventIdTextBox != null) FilterEventIdTextBox.Text = string.Empty;
             if (FilterLevelComboBox != null) FilterLevelComboBox.SelectedIndex = 0; // All Levels
+            if (FilterLogFileComboBox != null) FilterLogFileComboBox.SelectedIndex = 0; // All Files
+            if (StartDatePicker != null) StartDatePicker.SelectedDate = null;
+            if (StartTimeTextBox != null) StartTimeTextBox.Text = "00:00:00";
+            if (EndDatePicker != null) EndDatePicker.SelectedDate = null;
+            if (EndTimeTextBox != null) EndTimeTextBox.Text = "23:59:59";
             ApplyFilters();
         }
 
@@ -212,6 +268,7 @@ namespace WinLog
             
             OnResetFiltersClicked(sender, e);
             UpdateActiveFileLabel();
+            UpdateLogFileComboBox();
             UpdatePresetButtonsState();
             UpdateDynamicQuickFilters();
             ApplyFilters();
@@ -835,322 +892,281 @@ namespace WinLog
                 }
             }
 
-            // Build HTML
+            // Build HTML — Autopsy-style forensic report layout
             sb.AppendLine("<!DOCTYPE html>");
             sb.AppendLine("<html lang=\"en\">");
             sb.AppendLine("<head>");
             sb.AppendLine("  <meta charset=\"UTF-8\">");
-            sb.AppendLine("  <title>WinLog Forensic Investigation Dashboard &amp; Report</title>");
+            sb.AppendLine("  <title>WinLog Forensic Report</title>");
             sb.AppendLine("  <style>");
-            sb.AppendLine("    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');");
-            sb.AppendLine("    body {");
-            sb.AppendLine("      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;");
-            sb.AppendLine("      margin: 0;");
-            sb.AppendLine("      background-color: #0f172a;");
-            sb.AppendLine("      color: #cbd5e1;");
-            sb.AppendLine("      line-height: 1.6;");
+            sb.AppendLine("    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');");
+            sb.AppendLine("    * { margin: 0; padding: 0; box-sizing: border-box; }");
+            sb.AppendLine("    body { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1e293b; background: #f1f5f9; }");
+            sb.AppendLine("    a { color: #0284c7; text-decoration: none; }");
+            sb.AppendLine("    a:hover { text-decoration: underline; }");
+            // Sidebar
+            sb.AppendLine("    .layout { display: flex; min-height: 100vh; }");
+            sb.AppendLine("    .sidebar {");
+            sb.AppendLine("      width: 230px; min-width: 230px; background: #ffffff; border-right: 1px solid #e2e8f0;");
+            sb.AppendLine("      padding: 20px 0; position: fixed; top: 0; bottom: 0; overflow-y: auto;");
             sb.AppendLine("    }");
-            sb.AppendLine("    .header-banner {");
-            sb.AppendLine("      background: linear-gradient(135deg, #0284c7 0%, #0f172a 100%);");
-            sb.AppendLine("      padding: 30px 40px;");
-            sb.AppendLine("      border-bottom: 1px solid #1e293b;");
-            sb.AppendLine("      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);");
+            sb.AppendLine("    .sidebar-title { font-size: 14px; font-weight: 600; color: #0284c7; padding: 0 20px 15px 20px; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px; }");
+            sb.AppendLine("    .nav-section { padding: 0 10px; }");
+            sb.AppendLine("    .nav-item {");
+            sb.AppendLine("      display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 6px;");
+            sb.AppendLine("      font-size: 12.5px; color: #334155; cursor: pointer; margin-bottom: 2px; transition: background 0.15s;");
             sb.AppendLine("    }");
-            sb.AppendLine("    .container {");
-            sb.AppendLine("      max-width: 1250px;");
-            sb.AppendLine("      margin: 0 auto;");
-            sb.AppendLine("      padding: 30px 20px;");
+            sb.AppendLine("    .nav-item:hover { background: #f1f5f9; color: #0284c7; }");
+            sb.AppendLine("    .nav-icon { font-size: 14px; width: 20px; text-align: center; }");
+            sb.AppendLine("    .nav-count { margin-left: auto; font-size: 11px; color: #94a3b8; }");
+            // Main content area
+            sb.AppendLine("    .main { margin-left: 230px; flex: 1; padding: 0; }");
+            // Report header
+            sb.AppendLine("    .report-header {");
+            sb.AppendLine("      padding: 25px 40px; border-bottom: 2px solid #0284c7; background: #ffffff;");
             sb.AppendLine("    }");
-            sb.AppendLine("    .title-logo { font-size: 26px; font-weight: 700; color: #f8fafc; letter-spacing: -0.02em; }");
-            sb.AppendLine("    .title-sub { color: #38bdf8; font-size: 13px; font-weight: 500; margin-top: 2px; }");
-            sb.AppendLine("    .dashboard-grid {");
-            sb.AppendLine("      display: grid;");
-            sb.AppendLine("      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));");
-            sb.AppendLine("      gap: 15px;");
-            sb.AppendLine("      margin-bottom: 30px;");
+            sb.AppendLine("    .report-title { font-size: 28px; font-weight: 300; color: #0284c7; letter-spacing: -0.02em; }");
+            sb.AppendLine("    .report-subtitle { font-size: 12px; color: #94a3b8; margin-top: 4px; }");
+            // Sections
+            sb.AppendLine("    .content-area { padding: 25px 40px; }");
+            sb.AppendLine("    .section { margin-bottom: 30px; }");
+            sb.AppendLine("    .section-heading {");
+            sb.AppendLine("      font-size: 16px; font-weight: 400; color: #0284c7; margin-bottom: 15px;");
+            sb.AppendLine("      padding-bottom: 5px; border-bottom: 1px solid #e2e8f0;");
             sb.AppendLine("    }");
-            sb.AppendLine("    .card {");
-            sb.AppendLine("      background-color: #1e293b;");
-            sb.AppendLine("      border: 1px solid #334155;");
-            sb.AppendLine("      border-radius: 10px;");
-            sb.AppendLine("      padding: 15px 20px;");
-            sb.AppendLine("      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);");
+            // Info tables (Autopsy-style key-value)
+            sb.AppendLine("    .info-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }");
+            sb.AppendLine("    .info-table td { padding: 6px 12px; vertical-align: top; font-size: 13px; }");
+            sb.AppendLine("    .info-table td:first-child { width: 200px; color: #475569; font-weight: 500; }");
+            sb.AppendLine("    .info-table td:last-child { color: #1e293b; }");
+            sb.AppendLine("    .info-table tr:nth-child(even) { background: #f8fafc; }");
+            // Dark header bar (like Autopsy Image Info bar)
+            sb.AppendLine("    .dark-bar { background: #334155; color: #f8fafc; padding: 8px 14px; font-size: 12.5px; font-weight: 500; border-radius: 4px 4px 0 0; margin-top: 10px; }");
+            // Data table for events
+            sb.AppendLine("    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }");
+            sb.AppendLine("    .data-table th { background: #e2e8f0; color: #334155; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #cbd5e1; }");
+            sb.AppendLine("    .data-table td { padding: 7px 10px; border: 1px solid #e2e8f0; vertical-align: top; }");
+            sb.AppendLine("    .data-table tr:nth-child(even) { background: #f8fafc; }");
+            sb.AppendLine("    .data-table tr:hover { background: #e0f2fe; }");
+            // Severity badges
+            sb.AppendLine("    .badge { display: inline-block; padding: 2px 8px; font-size: 10px; font-weight: 600; border-radius: 3px; color: white; }");
+            sb.AppendLine("    .b-critical { background: #dc2626; }");
+            sb.AppendLine("    .b-error { background: #ef4444; }");
+            sb.AppendLine("    .b-warning { background: #f59e0b; color: #1e293b; }");
+            sb.AppendLine("    .b-info { background: #3b82f6; }");
+            sb.AppendLine("    .b-success { background: #16a34a; }");
+            sb.AppendLine("    .b-other { background: #64748b; }");
+            // Alert box for findings
+            sb.AppendLine("    .alert-box { background: #fef3c7; border: 1px solid #fbbf24; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 4px; margin-bottom: 15px; }");
+            sb.AppendLine("    .alert-title { font-weight: 700; color: #92400e; font-size: 13px; margin-bottom: 8px; }");
+            sb.AppendLine("    .alert-list { padding-left: 20px; color: #78350f; line-height: 1.8; }");
+            sb.AppendLine("    .alert-list li { margin-bottom: 6px; font-size: 12.5px; }");
+            // Investigator notes box
+            sb.AppendLine("    .notes-box { background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; padding: 12px 16px; font-size: 12.5px; color: #0c4a6e; white-space: pre-wrap; border-radius: 4px; }");
+            // Playbook
+            sb.AppendLine("    .playbook { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #16a34a; padding: 12px 16px; border-radius: 4px; margin-top: 8px; }");
+            sb.AppendLine("    .playbook-title { font-weight: 700; color: #166534; font-size: 12px; margin-bottom: 5px; }");
+            sb.AppendLine("    .playbook-steps { font-family: 'Cascadia Code', Consolas, monospace; font-size: 11px; color: #166534; white-space: pre-wrap; background: #dcfce7; padding: 8px 12px; border-radius: 3px; }");
+            // Event detail expander
+            sb.AppendLine("    .detail-box {");
+            sb.AppendLine("      font-family: 'Cascadia Code', Consolas, monospace; font-size: 11px; color: #334155;");
+            sb.AppendLine("      background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px 14px; border-radius: 4px;");
+            sb.AppendLine("      max-height: 160px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin-top: 6px;");
             sb.AppendLine("    }");
-            sb.AppendLine("    .card-label { font-size: 10px; text-transform: uppercase; font-weight: 700; color: #94a3b8; letter-spacing: 0.05em; }");
-            sb.AppendLine("    .card-value { font-size: 16px; font-weight: 600; color: #f8fafc; margin-top: 4px; word-break: break-all; }");
-            sb.AppendLine("    .section {");
-            sb.AppendLine("      background-color: #1e293b;");
-            sb.AppendLine("      border: 1px solid #334155;");
-            sb.AppendLine("      border-radius: 10px;");
-            sb.AppendLine("      padding: 20px;");
-            sb.AppendLine("      margin-bottom: 25px;");
-            sb.AppendLine("    }");
-            sb.AppendLine("    .section-title {");
-            sb.AppendLine("      font-size: 17px;");
-            sb.AppendLine("      font-weight: 600;");
-            sb.AppendLine("      color: #38bdf8;");
-            sb.AppendLine("      border-bottom: 1px solid #334155;");
-            sb.AppendLine("      padding-bottom: 8px;");
-            sb.AppendLine("      margin-bottom: 15px;");
-            sb.AppendLine("    }");
-            sb.AppendLine("    .stats-table { width: 100%; border-collapse: collapse; font-size: 12px; }");
-            sb.AppendLine("    .stats-table th, .stats-table td { border: 1px solid #334155; padding: 8px 10px; text-align: left; }");
-            sb.AppendLine("    .stats-table th { background-color: #0f172a; color: #94a3b8; font-weight: 600; }");
-            sb.AppendLine("    .badge { display: inline-block; padding: 2px 6px; font-size: 10px; font-weight: 700; border-radius: 4px; color: white; text-align: center; }");
-            sb.AppendLine("    .badge-critical { background-color: #ef4444; }");
-            sb.AppendLine("    .badge-error { background-color: #f87171; }");
-            sb.AppendLine("    .badge-warning { background-color: #f59e0b; }");
-            sb.AppendLine("    .badge-info { background-color: #3b82f6; }");
-            sb.AppendLine("    .badge-success { background-color: #10b981; }");
-            sb.AppendLine("    .badge-other { background-color: #64748b; }");
-            sb.AppendLine("    .notes-box { font-style: italic; color: #cbd5e1; white-space: pre-wrap; font-size: 13px; background: #0f172a; padding: 12px; border-left: 4px solid #38bdf8; border-radius: 4px; }");
-            sb.AppendLine("    .narrative-box { background-color: #451a03; border: 1px solid #78350f; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 6px; }");
-            sb.AppendLine("    .narrative-title { font-weight: 700; color: #f59e0b; font-size: 14.5px; border-bottom: 1px dashed #78350f; padding-bottom: 5px; }");
-            sb.AppendLine("    .narrative-list { padding-left: 20px; line-height: 1.7; }");
-            sb.AppendLine("    .narrative-list li { margin-bottom: 10px; font-size: 13px; color: #fef3c7; }");
-            sb.AppendLine("    /* SIEM Timeline Styling */");
-            sb.AppendLine("    .timeline {");
-            sb.AppendLine("      position: relative;");
-            sb.AppendLine("      padding-left: 25px;");
-            sb.AppendLine("      border-left: 2px solid #334155;");
-            sb.AppendLine("      margin-left: 15px;");
-            sb.AppendLine("      margin-top: 15px;");
-            sb.AppendLine("    }");
-            sb.AppendLine("    .timeline-item {");
-            sb.AppendLine("      position: relative;");
-            sb.AppendLine("      background-color: #1e293b;");
-            sb.AppendLine("      border: 1px solid #334155;");
-            sb.AppendLine("      border-radius: 8px;");
-            sb.AppendLine("      padding: 16px 20px;");
-            sb.AppendLine("      margin-bottom: 20px;");
-            sb.AppendLine("      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);");
-            sb.AppendLine("    }");
-            sb.AppendLine("    .timeline-dot {");
-            sb.AppendLine("      position: absolute;");
-            sb.AppendLine("      left: -36px;");
-            sb.AppendLine("      top: 22px;");
-            sb.AppendLine("      width: 16px;");
-            sb.AppendLine("      height: 16px;");
-            sb.AppendLine("      border-radius: 50%;");
-            sb.AppendLine("      border: 4px solid #0f172a;");
-            sb.AppendLine("    }");
-            sb.AppendLine("    /* Border & Dot Severities */");
-            sb.AppendLine("    .border-critical { border-left: 4px solid #ef4444 !important; }");
-            sb.AppendLine("    .border-error { border-left: 4px solid #f87171 !important; }");
-            sb.AppendLine("    .border-warning { border-left: 4px solid #f59e0b !important; }");
-            sb.AppendLine("    .border-info { border-left: 4px solid #3b82f6 !important; }");
-            sb.AppendLine("    .border-success { border-left: 4px solid #10b981 !important; }");
-            sb.AppendLine("    .dot-critical { background-color: #ef4444; }");
-            sb.AppendLine("    .dot-error { background-color: #f87171; }");
-            sb.AppendLine("    .dot-warning { background-color: #f59e0b; }");
-            sb.AppendLine("    .dot-info { background-color: #3b82f6; }");
-            sb.AppendLine("    .dot-success { background-color: #10b981; }");
-            sb.AppendLine("    .item-header {");
-            sb.AppendLine("      display: flex;");
-            sb.AppendLine("      flex-wrap: wrap;");
-            sb.AppendLine("      gap: 15px;");
-            sb.AppendLine("      font-size: 12px;");
-            sb.AppendLine("      color: #94a3b8;");
-            sb.AppendLine("      border-bottom: 1px dashed #334155;");
-            sb.AppendLine("      padding-bottom: 8px;");
-            sb.AppendLine("      margin-bottom: 10px;");
-            sb.AppendLine("    }");
-            sb.AppendLine("    .item-header span strong { color: #f8fafc; }");
-            sb.AppendLine("    .item-summary { font-size: 14px; font-weight: 600; color: #f1f5f9; margin-bottom: 10px; }");
-            sb.AppendLine("    .item-details-box {");
-            sb.AppendLine("      background-color: #0f172a;");
-            sb.AppendLine("      border: 1px solid #334155;");
-            sb.AppendLine("      border-radius: 6px;");
-            sb.AppendLine("      padding: 12px 15px;");
-            sb.AppendLine("      font-family: Consolas, Monaco, monospace;");
-            sb.AppendLine("      font-size: 11.5px;");
-            sb.AppendLine("      color: #cbd5e1;");
-            sb.AppendLine("      white-space: pre-wrap;");
-            sb.AppendLine("      max-height: 200px;");
-            sb.AppendLine("      overflow-y: auto;");
-            sb.AppendLine("      margin-bottom: 12px;");
-            sb.AppendLine("      word-break: break-all;");
-            sb.AppendLine("    }");
-            sb.AppendLine("    .playbook-box {");
-            sb.AppendLine("      background-color: #082f49;");
-            sb.AppendLine("      border: 1px solid #0284c7;");
-            sb.AppendLine("      border-radius: 6px;");
-            sb.AppendLine("      padding: 12px 15px;");
-            sb.AppendLine("      font-size: 12.5px;");
-            sb.AppendLine("      color: #e0f2fe;");
-            sb.AppendLine("    }");
-            sb.AppendLine("    .playbook-title { font-weight: 700; color: #38bdf8; margin-bottom: 4px; }");
+            // Footer
+            sb.AppendLine("    .report-footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 20px 40px; border-top: 1px solid #e2e8f0; margin-top: 30px; }");
+            // Print styling
+            sb.AppendLine("    @media print { .sidebar { display: none; } .main { margin-left: 0; } .layout { display: block; } }");
             sb.AppendLine("  </style>");
             sb.AppendLine("</head>");
             sb.AppendLine("<body>");
+            sb.AppendLine("<div class=\"layout\">");
 
-            // Header Container Banner
-            sb.AppendLine("  <div class=\"header-banner\">");
-            sb.AppendLine("    <div class=\"title-logo\">WINLOG FORENSIC DASHBOARD</div>");
-            sb.AppendLine("    <div class=\"title-sub\">Interactive Timeline &amp; Cyber Threat Investigation Report</div>");
-            sb.AppendLine("  </div>");
+            // ─── Sidebar Navigation ───
+            sb.AppendLine("  <nav class=\"sidebar\">");
+            sb.AppendLine("    <div class=\"sidebar-title\">Report Navigation</div>");
+            sb.AppendLine("    <div class=\"nav-section\">");
+            sb.AppendLine("      <a href=\"#case-summary\" class=\"nav-item\"><span class=\"nav-icon\">📋</span> Case Summary</a>");
+            sb.AppendLine("      <a href=\"#evidence-sources\" class=\"nav-item\"><span class=\"nav-icon\">📁</span> Evidence Sources</a>");
+            if (!string.IsNullOrWhiteSpace(metadata.InvestigatorNotes))
+                sb.AppendLine("      <a href=\"#investigator-notes\" class=\"nav-item\"><span class=\"nav-icon\">📝</span> Investigator Notes</a>");
+            sb.AppendLine("      <a href=\"#threat-findings\" class=\"nav-item\"><span class=\"nav-icon\">⚠️</span> Threat Findings <span class=\"nav-count\">(" + findings.Distinct().Count() + ")</span></a>");
+            sb.AppendLine("      <a href=\"#statistics\" class=\"nav-item\"><span class=\"nav-icon\">📊</span> Statistics</a>");
+            sb.AppendLine("      <a href=\"#top-events\" class=\"nav-item\"><span class=\"nav-icon\">🔢</span> Top Event IDs</a>");
+            sb.AppendLine("      <a href=\"#event-log\" class=\"nav-item\"><span class=\"nav-icon\">🕒</span> Event Log <span class=\"nav-count\">(" + _filteredEvents.Count.ToString("N0") + ")</span></a>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </nav>");
 
-            sb.AppendLine("  <div class=\"container\">");
+            // ─── Main Content Area ───
+            sb.AppendLine("  <div class=\"main\">");
 
-            // Dashboard Grid
-            sb.AppendLine("    <div class=\"dashboard-grid\">");
-            sb.AppendLine($"      <div class=\"card\"><div class=\"card-label\">Case Reference / ID</div><div class=\"card-value\">{EscapeHtml(metadata.CaseId)}</div></div>");
-            sb.AppendLine($"      <div class=\"card\"><div class=\"card-label\">Lead Investigator</div><div class=\"card-value\">{EscapeHtml(metadata.InvestigatorName)}</div></div>");
-            sb.AppendLine($"      <div class=\"card\"><div class=\"card-label\">Target Machine</div><div class=\"card-value\">{EscapeHtml(metadata.TargetHost)}</div></div>");
-            sb.AppendLine($"      <div class=\"card\"><div class=\"card-label\">Total Isolated Logs</div><div class=\"card-value\">{_filteredEvents.Count:N0}</div></div>");
+            // Report Header
+            sb.AppendLine("    <div class=\"report-header\">");
+            sb.AppendLine("      <div class=\"report-title\">WinLog Forensic Report</div>");
+            sb.AppendLine($"      <div class=\"report-subtitle\">HTML Report Generated on {DateTime.Now:yyyy/MM/dd HH:mm:ss}</div>");
             sb.AppendLine("    </div>");
 
-            // Source Evidence File list
-            string sourceFilesText = string.Join(", ", _currentFilePaths.Select(Path.GetFileName));
-            sb.AppendLine("    <div class=\"section\">");
-            sb.AppendLine("      <div class=\"section-title\">📁 Evidence Sources</div>");
-            sb.AppendLine($"      <div style=\"font-size:13px; color:#cbd5e1;\">{EscapeHtml(sourceFilesText)}</div>");
-            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class=\"content-area\">");
 
-            // Investigator custom notes
+            // ─── Section: Case Summary ───
+            sb.AppendLine("      <div class=\"section\" id=\"case-summary\">");
+            sb.AppendLine("        <div class=\"section-heading\">Case Summary:</div>");
+            sb.AppendLine("        <table class=\"info-table\">");
+            sb.AppendLine($"          <tr><td>Case Reference:</td><td>{EscapeHtml(metadata.CaseId)}</td></tr>");
+            sb.AppendLine($"          <tr><td>Lead Investigator:</td><td>{EscapeHtml(metadata.InvestigatorName)}</td></tr>");
+            sb.AppendLine($"          <tr><td>Target Machine:</td><td>{EscapeHtml(metadata.TargetHost)}</td></tr>");
+            sb.AppendLine($"          <tr><td>Total Events Analyzed:</td><td>{_filteredEvents.Count:N0}</td></tr>");
+            sb.AppendLine($"          <tr><td>Report Generated:</td><td>{DateTime.Now:yyyy/MM/dd HH:mm:ss}</td></tr>");
+            if (_filteredEvents.Count > 0)
+            {
+                var earliest = _filteredEvents.Min(e => e.TimeCreated);
+                var latest = _filteredEvents.Max(e => e.TimeCreated);
+                sb.AppendLine($"          <tr><td>Time Range (Earliest):</td><td>{earliest:yyyy-MM-dd HH:mm:ss}</td></tr>");
+                sb.AppendLine($"          <tr><td>Time Range (Latest):</td><td>{latest:yyyy-MM-dd HH:mm:ss}</td></tr>");
+            }
+            sb.AppendLine("        </table>");
+            sb.AppendLine("      </div>");
+
+            // ─── Section: Evidence Sources ───
+            sb.AppendLine("      <div class=\"section\" id=\"evidence-sources\">");
+            sb.AppendLine("        <div class=\"section-heading\">Evidence Sources:</div>");
+            foreach (var fp in _currentFilePaths)
+            {
+                string fname = Path.GetFileName(fp);
+                sb.AppendLine($"        <div class=\"dark-bar\">{EscapeHtml(fname)}</div>");
+                sb.AppendLine("        <table class=\"info-table\">");
+                sb.AppendLine($"          <tr><td>Full Path:</td><td>{EscapeHtml(fp)}</td></tr>");
+                sb.AppendLine("        </table>");
+            }
+            sb.AppendLine("      </div>");
+
+            // ─── Section: Investigator Notes ───
             if (!string.IsNullOrWhiteSpace(metadata.InvestigatorNotes))
             {
-                sb.AppendLine("    <div class=\"section\">");
-                sb.AppendLine("      <div class=\"section-title\">📝 Investigator Direct Notes</div>");
-                sb.AppendLine($"      <div class=\"notes-box\">{EscapeHtml(metadata.InvestigatorNotes)}</div>");
-                sb.AppendLine("    </div>");
+                sb.AppendLine("      <div class=\"section\" id=\"investigator-notes\">");
+                sb.AppendLine("        <div class=\"section-heading\">Investigator Notes:</div>");
+                sb.AppendLine($"        <div class=\"notes-box\">{EscapeHtml(metadata.InvestigatorNotes)}</div>");
+                sb.AppendLine("      </div>");
             }
 
-            // Timeline Correlation Alert Narrative (RTL / Arabic)
-            sb.AppendLine("    <div class=\"section\">");
-            sb.AppendLine("      <div class=\"section-title\">⚡ Incident Timeline Correlation Analysis</div>");
+            // ─── Section: Threat Findings ───
+            sb.AppendLine("      <div class=\"section\" id=\"threat-findings\">");
+            sb.AppendLine("        <div class=\"section-heading\">Incident Timeline Correlation Analysis:</div>");
             if (findings.Any())
             {
-                sb.AppendLine("      <div class=\"narrative-box\">");
-                sb.AppendLine("        <div class=\"narrative-title\">⚠️ Detected Attack Patterns &amp; Threat Intelligence Findings:</div>");
-                sb.AppendLine("        <ul class=\"narrative-list\">");
+                sb.AppendLine("        <div class=\"alert-box\">");
+                sb.AppendLine("          <div class=\"alert-title\">⚠ Detected Attack Patterns &amp; Threat Intelligence Findings:</div>");
+                sb.AppendLine("          <ul class=\"alert-list\">");
                 foreach (var finding in findings.Distinct())
                 {
-                    sb.AppendLine($"          <li>{finding}</li>");
+                    sb.AppendLine($"            <li>{finding}</li>");
                 }
-                sb.AppendLine("        </ul>");
-                sb.AppendLine("      </div>");
+                sb.AppendLine("          </ul>");
+                sb.AppendLine("        </div>");
             }
             else
             {
-                sb.AppendLine("      <div style=\"background:#0f172a; border: 1px solid #334155; padding:15px; border-radius:6px; font-size:12.5px; color:#94a3b8;\">");
-                sb.AppendLine("        ℹ️ No predefined correlation threat patterns were detected automatically. Manual checking is advised.");
-                sb.AppendLine("      </div>");
+                sb.AppendLine("        <p style=\"color:#64748b;\">ℹ No predefined correlation threat patterns were detected automatically. Manual analysis is recommended.</p>");
             }
-            sb.AppendLine("    </div>");
+            sb.AppendLine("      </div>");
 
-            // Metrics Summary Grid
-            sb.AppendLine("    <div class=\"section\">");
-            sb.AppendLine("      <div class=\"section-title\">📊 Statistics Breakdown</div>");
-            sb.AppendLine("      <div style=\"display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;\">");
+            // ─── Section: Statistics ───
+            sb.AppendLine("      <div class=\"section\" id=\"statistics\">");
+            sb.AppendLine("        <div class=\"section-heading\">Severity Level Statistics:</div>");
+            sb.AppendLine("        <table class=\"data-table\">");
+            sb.AppendLine("          <tr><th>Severity Level</th><th>Count</th><th>Percentage</th></tr>");
+            AddStatRowAutopsy(sb, "Critical", criticalCount, "b-critical");
+            AddStatRowAutopsy(sb, "Error", errorCount, "b-error");
+            AddStatRowAutopsy(sb, "Warning", warningCount, "b-warning");
+            AddStatRowAutopsy(sb, "Information", infoCount, "b-info");
+            AddStatRowAutopsy(sb, "SuccessAudit", successAuditCount, "b-success");
+            AddStatRowAutopsy(sb, "FailureAudit", failureAuditCount, "b-critical");
+            if (otherCount > 0) AddStatRowAutopsy(sb, "Other", otherCount, "b-other");
+            sb.AppendLine("        </table>");
+            sb.AppendLine("      </div>");
 
-            // Severity table
-            sb.AppendLine("        <div>");
-            sb.AppendLine("          <h4 style=\"margin: 0 0 10px 0; color:#38bdf8; font-size:13px;\">Severity Level Metrics</h4>");
-            sb.AppendLine("          <table class=\"stats-table\">");
-            sb.AppendLine("            <tr><th>Severity Level</th><th>Count</th><th>Percentage</th></tr>");
-            AddStatRow(sb, "Critical", criticalCount, "badge-critical");
-            AddStatRow(sb, "Error", errorCount, "badge-error");
-            AddStatRow(sb, "Warning", warningCount, "badge-warning");
-            AddStatRow(sb, "Information", infoCount, "badge-info");
-            AddStatRow(sb, "SuccessAudit", successAuditCount, "badge-success");
-            AddStatRow(sb, "FailureAudit", failureAuditCount, "badge-critical");
-            if (otherCount > 0) AddStatRow(sb, "Other", otherCount, "badge-other");
-            sb.AppendLine("          </table>");
-            sb.AppendLine("        </div>");
-
-            // Top event IDs
-            sb.AppendLine("        <div>");
-            sb.AppendLine("          <h4 style=\"margin: 0 0 10px 0; color:#38bdf8; font-size:13px;\">Top Event IDs present in timeline</h4>");
-            sb.AppendLine("          <table class=\"stats-table\">");
-            sb.AppendLine("            <tr><th>Event ID</th><th>Provider / Source</th><th>Count</th></tr>");
+            // ─── Section: Top Event IDs ───
+            sb.AppendLine("      <div class=\"section\" id=\"top-events\">");
+            sb.AppendLine("        <div class=\"section-heading\">Top Event IDs:</div>");
+            sb.AppendLine("        <table class=\"data-table\">");
+            sb.AppendLine("          <tr><th>Event ID</th><th>Provider / Source</th><th>Count</th></tr>");
             foreach (var item in topEventIds)
             {
-                sb.AppendLine($"            <tr><td><strong>{item.EventId}</strong></td><td>{EscapeHtml(item.Source)}</td><td>{item.Count:N0}</td></tr>");
+                sb.AppendLine($"          <tr><td><strong>{item.EventId}</strong></td><td>{EscapeHtml(item.Source)}</td><td>{item.Count:N0}</td></tr>");
             }
-            sb.AppendLine("          </table>");
-            sb.AppendLine("        </div>");
-
+            sb.AppendLine("        </table>");
             sb.AppendLine("      </div>");
-            sb.AppendLine("    </div>");
 
-            // Chronological Timeline Cards
-            sb.AppendLine("    <div class=\"section\">");
-            sb.AppendLine("      <div class=\"section-title\">🕒 Chronological SIEM Timeline View</div>");
-            sb.AppendLine("      <div class=\"timeline\">");
+            // ─── Section: Chronological Event Log ───
+            sb.AppendLine("      <div class=\"section\" id=\"event-log\">");
+            sb.AppendLine("        <div class=\"section-heading\">Chronological Event Log:</div>");
+            sb.AppendLine("        <table class=\"data-table\">");
+            sb.AppendLine("          <tr><th>#</th><th>Date &amp; Time</th><th>Event ID</th><th>Level</th><th>Source</th><th>Computer</th><th>User</th><th>Task Category</th></tr>");
 
             int idx = 1;
             foreach (var ev in _filteredEvents)
             {
-                string severityClass = ev.Level.ToLower() switch
-                {
-                    "critical" => "critical",
-                    "error" => "error",
-                    "warning" => "warning",
-                    "information" => "info",
-                    "successaudit" => "success",
-                    "failureaudit" => "critical",
-                    _ => "info"
-                };
-
                 string badgeClass = ev.Level.ToLower() switch
                 {
-                    "critical" => "badge-critical",
-                    "error" => "badge-error",
-                    "warning" => "badge-warning",
-                    "information" => "badge-info",
-                    "successaudit" => "badge-success",
-                    "failureaudit" => "badge-critical",
-                    _ => "badge-other"
+                    "critical" => "b-critical",
+                    "error" => "b-error",
+                    "warning" => "b-warning",
+                    "information" => "b-info",
+                    "successaudit" => "b-success",
+                    "failureaudit" => "b-critical",
+                    _ => "b-other"
                 };
 
+                sb.AppendLine("          <tr>");
+                sb.AppendLine($"            <td>{idx}</td>");
+                sb.AppendLine($"            <td>{ev.TimeCreated:yyyy-MM-dd HH:mm:ss}</td>");
+                sb.AppendLine($"            <td><strong>{ev.EventId}</strong></td>");
+                sb.AppendLine($"            <td><span class=\"badge {badgeClass}\">{ev.Level}</span></td>");
+                sb.AppendLine($"            <td>{EscapeHtml(ev.Source)}</td>");
+                sb.AppendLine($"            <td>{EscapeHtml(ev.Computer)}</td>");
+                sb.AppendLine($"            <td>{EscapeHtml(ev.User)}</td>");
+                sb.AppendLine($"            <td>{EscapeHtml(ev.TaskCategory)}</td>");
+                sb.AppendLine("          </tr>");
+
+                // Detail row with full message + playbook
+                bool hasMessage = !string.IsNullOrEmpty(ev.Message);
                 int evIdVal = 0;
                 int.TryParse(ev.EventId, out evIdVal);
                 bool hasPlaybook = evIdVal > 0 && ForensicAdvisor.IsForensicHighlight(evIdVal);
 
-                sb.AppendLine($"        <div class=\"timeline-item border-{severityClass}\">");
-                sb.AppendLine($"          <div class=\"timeline-dot dot-{severityClass}\"></div>");
-                
-                // Card Header Metadata
-                sb.AppendLine("          <div class=\"item-header\">");
-                sb.AppendLine($"            <span>Index: <strong>#{idx++}</strong></span>");
-                sb.AppendLine($"            <span>Date &amp; Time: <strong>{ev.TimeCreated:yyyy-MM-dd HH:mm:ss}</strong></span>");
-                sb.AppendLine($"            <span>Event ID: <strong>{ev.EventId}</strong></span>");
-                sb.AppendLine($"            <span>Severity: <span class=\"badge {badgeClass}\">{ev.Level}</span></span>");
-                sb.AppendLine($"            <span>Computer: <strong>{EscapeHtml(ev.Computer)}</strong></span>");
-                sb.AppendLine($"            <span>User Account: <strong>{EscapeHtml(ev.User)}</strong></span>");
-                sb.AppendLine("          </div>");
-
-                // Summary
-                sb.AppendLine($"          <div class=\"item-summary\"><strong>Task: {EscapeHtml(ev.TaskCategory)}</strong> | Provider: {EscapeHtml(ev.Source)}</div>");
-
-                // Details Textbox (Pre-formatted scrollable details)
-                if (!string.IsNullOrEmpty(ev.Message))
+                if (hasMessage || hasPlaybook)
                 {
-                    sb.AppendLine($"          <div class=\"item-details-box\">{EscapeHtml(ev.Message)}</div>");
+                    sb.AppendLine($"          <tr><td colspan=\"8\" style=\"padding: 4px 10px 12px 30px; border-top: none;\">");
+                    if (hasMessage)
+                    {
+                        sb.AppendLine($"            <div class=\"detail-box\">{EscapeHtml(ev.Message)}</div>");
+                    }
+                    if (hasPlaybook)
+                    {
+                        var advice = ForensicAdvisor.GetAdvice(evIdVal);
+                        sb.AppendLine("            <div class=\"playbook\">");
+                        sb.AppendLine($"              <div class=\"playbook-title\">💡 Forensic Playbook: {EscapeHtml(advice.Title)} ({advice.Category})</div>");
+                        sb.AppendLine($"              <div style=\"margin-bottom:6px;\"><strong>Security Implication:</strong> {EscapeHtml(advice.Description)}</div>");
+                        sb.AppendLine($"              <div class=\"playbook-steps\">{EscapeHtml(advice.InvestigationSteps)}</div>");
+                        sb.AppendLine("            </div>");
+                    }
+                    sb.AppendLine("          </td></tr>");
                 }
 
-                // Inline Playbook Box (if matched)
-                if (hasPlaybook)
-                {
-                    var advice = ForensicAdvisor.GetAdvice(evIdVal);
-                    sb.AppendLine("          <div class=\"playbook-box\">");
-                    sb.AppendLine($"            <div class=\"playbook-title\">💡 Forensic Playbook: {EscapeHtml(advice.Title)} ({advice.Category})</div>");
-                    sb.AppendLine($"            <div style=\"margin-bottom:8px;\"><strong>Security Implication:</strong> {EscapeHtml(advice.Description)}</div>");
-                    sb.AppendLine($"            <div style=\"background:#032030; border:1px solid #0284c7; padding:8px 12px; border-radius:4px; font-family:Consolas, monospace; font-size:11px; white-space:pre-wrap; color:#e0f2fe;\">{EscapeHtml(advice.InvestigationSteps)}</div>");
-                    sb.AppendLine("          </div>");
-                }
-
-                sb.AppendLine("        </div>");
+                idx++;
             }
 
+            sb.AppendLine("        </table>");
             sb.AppendLine("      </div>");
-            sb.AppendLine("    </div>");
 
             // Footer
-            sb.AppendLine("    <div style=\"text-align: center; font-size: 11px; color: #64748b; margin-top: 50px; border-top: 1px solid #334155; padding-top: 15px;\">");
-            sb.AppendLine("      WinLog Forensic Timeline Report | Developed by Wadhah Anaam | Digital Forensics &amp; Incident Response Operations");
-            sb.AppendLine("    </div>");
+            sb.AppendLine("      <div class=\"report-footer\">");
+            sb.AppendLine("        WinLog Forensic Report | Developed by Wadhah Anaam | Digital Forensics &amp; Incident Response");
+            sb.AppendLine("      </div>");
+
+            sb.AppendLine("    </div>"); // content-area
+            sb.AppendLine("  </div>"); // main
+            sb.AppendLine("</div>"); // layout
 
             sb.AppendLine("</body>");
             sb.AppendLine("</html>");
@@ -1159,6 +1175,13 @@ namespace WinLog
         }
 
         private void AddStatRow(StringBuilder sb, string level, int count, string badgeClass)
+        {
+            if (_filteredEvents.Count == 0) return;
+            double pct = (double)count / _filteredEvents.Count * 100;
+            sb.AppendLine($"          <tr><td><span class=\"badge {badgeClass}\">{level}</span></td><td>{count:N0}</td><td>{pct:F1}%</td></tr>");
+        }
+
+        private void AddStatRowAutopsy(StringBuilder sb, string level, int count, string badgeClass)
         {
             if (_filteredEvents.Count == 0) return;
             double pct = (double)count / _filteredEvents.Count * 100;

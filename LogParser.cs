@@ -71,7 +71,8 @@ namespace WinLog
                 ".xml" => ParseXml(filePath),
                 ".csv" => ParseCsv(filePath),
                 ".xlsx" or ".xls" => ParseExcel(filePath),
-                _ => throw new NotSupportedException($"The file extension '{ext}' is not supported. Supported: .evtx, .json, .xml, .csv, .xlsx, .xls")
+                ".log" or ".txt" => ParseTextLog(filePath),
+                _ => throw new NotSupportedException($"The file extension '{ext}' is not supported. Supported: .evtx, .json, .xml, .csv, .xlsx, .xls, .log, .txt")
             };
         }
 
@@ -490,6 +491,397 @@ namespace WinLog
                 if (dict.TryGetValue(key, out var val)) return val;
             }
             return null;
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex AccessLogRegex = 
+            new System.Text.RegularExpressions.Regex(
+                @"^(?<ip>\S+)\s+(?<identd>\S+)\s+(?<user>\S+)\s+\[(?<time>[^\]]+)\]\s+""(?<request>[^""]*)""\s+(?<status>\d{3})\s+(?<size>\S+)(?:\s+""(?<referer>[^""]*)""\s+""(?<agent>[^""]*)""\s*)?$",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static readonly System.Text.RegularExpressions.Regex NginxErrorRegex = 
+            new System.Text.RegularExpressions.Regex(
+                @"^(?<time>\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s+\[(?<level>[^\]]+)\]\s+(?<msg>.*)$",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static readonly System.Text.RegularExpressions.Regex ApacheErrorRegex = 
+            new System.Text.RegularExpressions.Regex(
+                @"^\[(?<day>[A-Za-z]{3})\s+(?<time>[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+\d{4})\]\s+\[(?:(?<module>[^:]+):)?(?<level>[^\]]+)\]\s+(?:\[client\s+(?<client>[^\]]+)\]\s+)?(?<msg>.*)$",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static List<ImportedLogEntry> ParseTextLog(string filePath)
+        {
+            var entries = new List<ImportedLogEntry>();
+            if (!File.Exists(filePath)) return entries;
+
+            var lines = File.ReadLines(filePath).ToList();
+            long idx = 1;
+
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                // 1. Try Apache/Nginx Combined/Common Access Log
+                var matchAccess = AccessLogRegex.Match(line);
+                if (matchAccess.Success)
+                {
+                    string ip = matchAccess.Groups["ip"].Value;
+                    string user = matchAccess.Groups["user"].Value;
+                    if (user == "-") user = "N/A";
+                    string rawTime = matchAccess.Groups["time"].Value;
+                    DateTime time = ParseAccessLogDate(rawTime);
+                    string request = matchAccess.Groups["request"].Value;
+                    string status = matchAccess.Groups["status"].Value;
+                    string size = matchAccess.Groups["size"].Value;
+                    string referer = matchAccess.Groups["referer"].Success ? matchAccess.Groups["referer"].Value : "-";
+                    string agent = matchAccess.Groups["agent"].Success ? matchAccess.Groups["agent"].Value : "-";
+
+                    string level = "Information";
+                    if (status.StartsWith("5")) level = "Error";
+                    else if (status.StartsWith("4")) level = "Warning";
+                    if (status == "403" || status == "401") level = "Critical";
+
+                    bool isAttack = DetectWebAttack(request, out string attackCategory, out string attackTitle, out string attackDetails);
+
+                    int eventIdVal = isAttack ? 8004 : 8003;
+                    var advice = ForensicAdvisor.GetAdvice(eventIdVal);
+                    string msg = $"Request: {request}\nStatus: {status}\nBytes Sent: {size}\nReferer: {referer}\nUser-Agent: {agent}";
+                    if (isAttack)
+                    {
+                        msg = $"[ALERT: {attackTitle}]\nDetails: {attackDetails}\n\n{msg}";
+                        level = "Critical";
+                    }
+
+                    string webSource = "Web Access Log";
+                    if (filePath.Contains("nginx", StringComparison.OrdinalIgnoreCase))
+                        webSource = "Nginx Access Log";
+                    else if (filePath.Contains("apache", StringComparison.OrdinalIgnoreCase))
+                        webSource = "Apache Access Log";
+
+                    entries.Add(new ImportedLogEntry
+                    {
+                        RecordId = idx++,
+                        EventId = eventIdVal.ToString(),
+                        TimeCreated = time,
+                        LogName = Path.GetFileName(filePath),
+                        Source = webSource,
+                        Level = level,
+                        User = user,
+                        Computer = ip,
+                        Message = msg,
+                        RawData = line,
+                        IsForensicAlert = isAttack || status == "403" || status == "401",
+                        ForensicCategory = isAttack ? attackCategory : (status == "403" || status == "401" ? "Unauthorized Access" : string.Empty),
+                        ForensicTitle = isAttack ? attackTitle : (status == "403" ? "HTTP 403 Forbidden" : (status == "401" ? "HTTP 401 Unauthorized" : string.Empty)),
+                        TaskCategory = "HTTP Request",
+                        Keywords = status,
+                        Opcode = "Access"
+                    });
+                    continue;
+                }
+
+                // 2. Try Nginx Error Log
+                var matchNginxErr = NginxErrorRegex.Match(line);
+                if (matchNginxErr.Success)
+                {
+                    string rawTime = matchNginxErr.Groups["time"].Value;
+                    DateTime time = ParseNginxErrorDate(rawTime);
+                    string levelRaw = matchNginxErr.Groups["level"].Value;
+                    string msg = matchNginxErr.Groups["msg"].Value;
+
+                    string level = levelRaw.ToLower() switch
+                    {
+                        "emerg" or "alert" or "crit" => "Critical",
+                        "error" => "Error",
+                        "warn" or "warning" => "Warning",
+                        _ => "Information"
+                    };
+
+                    string clientIp = "N/A";
+                    var clientMatch = System.Text.RegularExpressions.Regex.Match(msg, @"client:\s*(?<ip>[0-9a-fA-F\.:]+)");
+                    if (clientMatch.Success) clientIp = clientMatch.Groups["ip"].Value;
+
+                    entries.Add(new ImportedLogEntry
+                    {
+                        RecordId = idx++,
+                        EventId = "8002",
+                        TimeCreated = time,
+                        LogName = Path.GetFileName(filePath),
+                        Source = "Nginx Error Log",
+                        Level = level,
+                        User = "N/A",
+                        Computer = clientIp,
+                        Message = msg,
+                        RawData = line,
+                        IsForensicAlert = level == "Critical" || level == "Error",
+                        ForensicCategory = level == "Critical" || level == "Error" ? "Web Server Error" : string.Empty,
+                        ForensicTitle = level == "Critical" || level == "Error" ? "Nginx Server Diagnostic Alert" : string.Empty,
+                        TaskCategory = "Server Diagnostics",
+                        Keywords = levelRaw,
+                        Opcode = "Error"
+                    });
+                    continue;
+                }
+
+                // 3. Try Apache Error Log
+                var matchApacheErr = ApacheErrorRegex.Match(line);
+                if (matchApacheErr.Success)
+                {
+                    string rawTime = matchApacheErr.Groups["time"].Value;
+                    DateTime time = ParseApacheErrorDate(rawTime);
+                    string levelRaw = matchApacheErr.Groups["level"].Value;
+                    string clientIp = matchApacheErr.Groups["client"].Success ? matchApacheErr.Groups["client"].Value : "N/A";
+                    string msg = matchApacheErr.Groups["msg"].Value;
+
+                    string level = levelRaw.ToLower() switch
+                    {
+                        "emerg" or "alert" or "crit" => "Critical",
+                        "error" => "Error",
+                        "warn" or "warning" => "Warning",
+                        _ => "Information"
+                    };
+
+                    entries.Add(new ImportedLogEntry
+                    {
+                        RecordId = idx++,
+                        EventId = "8001",
+                        TimeCreated = time,
+                        LogName = Path.GetFileName(filePath),
+                        Source = "Apache Error Log",
+                        Level = level,
+                        User = "N/A",
+                        Computer = clientIp,
+                        Message = msg,
+                        RawData = line,
+                        IsForensicAlert = level == "Critical" || level == "Error",
+                        ForensicCategory = level == "Critical" || level == "Error" ? "Web Server Error" : string.Empty,
+                        ForensicTitle = level == "Critical" || level == "Error" ? "Apache Server Diagnostic Alert" : string.Empty,
+                        TaskCategory = "Server Diagnostics",
+                        Keywords = levelRaw,
+                        Opcode = "Error"
+                    });
+                    continue;
+                }
+
+                // 4. Fallback: Generic Log Entry
+                DateTime genericTime = ExtractGenericTimestamp(line, filePath);
+                string genericLevel = "Information";
+                if (line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || 
+                    line.Contains("FAIL", StringComparison.OrdinalIgnoreCase) || 
+                    line.Contains("EXCEPTION", StringComparison.OrdinalIgnoreCase))
+                {
+                    genericLevel = "Error";
+                }
+                else if (line.Contains("WARN", StringComparison.OrdinalIgnoreCase))
+                {
+                    genericLevel = "Warning";
+                }
+                else if (line.Contains("FATAL", StringComparison.OrdinalIgnoreCase) || 
+                         line.Contains("CRITICAL", StringComparison.OrdinalIgnoreCase))
+                {
+                    genericLevel = "Critical";
+                }
+
+                entries.Add(new ImportedLogEntry
+                {
+                    RecordId = idx++,
+                    EventId = "9001",
+                    TimeCreated = genericTime,
+                    LogName = Path.GetFileName(filePath),
+                    Source = "Generic Log Parser",
+                    Level = genericLevel,
+                    User = "N/A",
+                    Computer = "N/A",
+                    Message = line.Trim(),
+                    RawData = line,
+                    IsForensicAlert = genericLevel == "Critical" || genericLevel == "Error",
+                    ForensicCategory = genericLevel == "Critical" || genericLevel == "Error" ? "Generic Error Log" : string.Empty,
+                    ForensicTitle = genericLevel == "Critical" || genericLevel == "Error" ? "Application Diagnostic Alert" : string.Empty,
+                    TaskCategory = "Application Log",
+                    Keywords = "Generic",
+                    Opcode = "Log"
+                });
+            }
+
+            entries.Sort((x, y) => y.TimeCreated.CompareTo(x.TimeCreated));
+            return entries;
+        }
+
+        private static DateTime ParseAccessLogDate(string timeStr)
+        {
+            string[] formats = {
+                "dd/MMM/yyyy:HH:mm:ss zzz",
+                "dd/MMM/yyyy:HH:mm:ss Z",
+                "dd/MMM/yyyy:HH:mm:ss"
+            };
+            if (DateTime.TryParseExact(timeStr, formats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dt))
+            {
+                return dt;
+            }
+            int spaceIdx = timeStr.IndexOf(' ');
+            if (spaceIdx > 0)
+            {
+                string trimmed = timeStr.Substring(0, spaceIdx);
+                if (DateTime.TryParseExact(trimmed, "dd/MMM/yyyy:HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out dt))
+                {
+                    return dt;
+                }
+            }
+            if (DateTime.TryParse(timeStr, out dt))
+            {
+                return dt;
+            }
+            return DateTime.Now;
+        }
+
+        private static DateTime ParseNginxErrorDate(string timeStr)
+        {
+            if (DateTime.TryParseExact(timeStr, "yyyy/MM/dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dt))
+            {
+                return dt;
+            }
+            if (DateTime.TryParse(timeStr, out dt))
+            {
+                return dt;
+            }
+            return DateTime.Now;
+        }
+
+        private static DateTime ParseApacheErrorDate(string timeStr)
+        {
+            string[] formats = {
+                "MMM dd HH:mm:ss yyyy",
+                "MMM  d HH:mm:ss yyyy",
+                "MMM d HH:mm:ss yyyy",
+                "MMM dd HH:mm:ss.ffffff yyyy",
+                "MMM  d HH:mm:ss.ffffff yyyy",
+                "MMM d HH:mm:ss.ffffff yyyy"
+            };
+            if (DateTime.TryParseExact(timeStr, formats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dt))
+            {
+                return dt;
+            }
+            if (DateTime.TryParse(timeStr, out dt))
+            {
+                return dt;
+            }
+            return DateTime.Now;
+        }
+
+        private static DateTime ExtractGenericTimestamp(string line, string filePath)
+        {
+            var matchIso = System.Text.RegularExpressions.Regex.Match(line, @"\b(?<date>\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\b");
+            if (matchIso.Success && DateTime.TryParse(matchIso.Groups["date"].Value, out DateTime dtIso))
+            {
+                return dtIso;
+            }
+
+            var matchSyslog = System.Text.RegularExpressions.Regex.Match(line, @"\b(?<date>[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\b");
+            if (matchSyslog.Success)
+            {
+                string dtStr = matchSyslog.Groups["date"].Value + " " + DateTime.Now.Year;
+                if (DateTime.TryParse(dtStr, out DateTime dtSys))
+                {
+                    return dtSys;
+                }
+            }
+
+            var matchSlash = System.Text.RegularExpressions.Regex.Match(line, @"\b(?<date>\d{2}/[A-Za-z]{3}/\d{4} \d{2}:\d{2}:\d{2})\b");
+            if (matchSlash.Success && DateTime.TryParse(matchSlash.Groups["date"].Value, out DateTime dtSlash))
+            {
+                return dtSlash;
+            }
+
+            try
+            {
+                return File.GetLastWriteTime(filePath);
+            }
+            catch
+            {
+                return DateTime.Now;
+            }
+        }
+
+        private static bool DetectWebAttack(string request, out string category, out string title, out string details)
+        {
+            category = string.Empty;
+            title = string.Empty;
+            details = string.Empty;
+
+            if (string.IsNullOrEmpty(request)) return false;
+
+            if (request.Contains("etc/passwd", StringComparison.OrdinalIgnoreCase) || 
+                request.Contains("etc/shadow", StringComparison.OrdinalIgnoreCase) || 
+                request.Contains("boot.ini", StringComparison.OrdinalIgnoreCase) || 
+                request.Contains("win.ini", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("../", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("..\\", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("..%2f", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("..%5c", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "Directory Traversal";
+                title = "Path Traversal / File Disclosure Probe";
+                details = "The request query path contains directory traversal signatures (e.g., ../ or system files like etc/passwd).";
+                return true;
+            }
+
+            if (request.Contains("union ", StringComparison.OrdinalIgnoreCase) && request.Contains("select", StringComparison.OrdinalIgnoreCase) || 
+                request.Contains("select ", StringComparison.OrdinalIgnoreCase) && request.Contains("from", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("insert into", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("update ", StringComparison.OrdinalIgnoreCase) && request.Contains("set", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("delete from", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("sysdatabases", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("sysobjects", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("sqlmap", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "SQL Injection";
+                title = "SQL Injection (SQLi) Attempt";
+                details = "The request URI contains active SQL commands or keywords typically used to retrieve database records unauthorized.";
+                return true;
+            }
+
+            if (request.Contains("cmd.exe", StringComparison.OrdinalIgnoreCase) || 
+                request.Contains("/bin/sh", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("/bin/bash", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("powershell", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("whoami", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("wget ", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("curl ", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("nc -e", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "Command Injection";
+                title = "Remote Command Execution (RCE) / Command Injection Probe";
+                details = "The request includes executable shell script parameters or calls to administrative operating system tools.";
+                return true;
+            }
+
+            if (request.Contains(".git/", StringComparison.OrdinalIgnoreCase) || 
+                request.Contains(".env", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("wp-config.php", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("config.php", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("database.yml", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("backup", StringComparison.OrdinalIgnoreCase) && request.Contains(".zip", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains(".sql", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("phpinfo.php", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "Information Disclosure";
+                title = "Sensitive File / Configuration Disclosure Probe";
+                details = "The request attempts to access system configuration files, environment variables, git repositories, or database backups.";
+                return true;
+            }
+
+            if (request.Contains("<script>", StringComparison.OrdinalIgnoreCase) || 
+                request.Contains("onerror=", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("onload=", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("javascript:", StringComparison.OrdinalIgnoreCase) ||
+                request.Contains("alert(", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "Cross-Site Scripting";
+                title = "Cross-Site Scripting (XSS) Inject Probe";
+                details = "HTML/JavaScript payload elements were detected in the HTTP request URI parameters.";
+                return true;
+            }
+
+            return false;
         }
     }
 }

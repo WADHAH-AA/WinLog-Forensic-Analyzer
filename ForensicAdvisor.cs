@@ -148,6 +148,61 @@ namespace WinLog
                     Description = "A shutdown or reboot was initiated by a user or an active process (such as a Windows Update or a script).",
                     InvestigationSteps = "1. Inspect the 'User' and 'Process' fields to see who initiated the shutdown.\n2. Verify if this reboot was scheduled, or if an attacker is trying to disrupt logging, trigger boot persistence, or clear volatile memory."
                 }
+            },
+            {
+                8001, new ForensicAdvice
+                {
+                    EventId = 8001,
+                    Title = "Apache Web Server Error Log",
+                    Category = "Web Application / Server Error",
+                    Severity = "Warning",
+                    Description = "An entry from the Apache HTTP Server error log containing diagnostics, runtime warnings, or exceptions.",
+                    InvestigationSteps = "1. Look at the error message details for software exceptions or misconfigurations.\n2. Cross-reference the timestamp with Web Access logs to trace the client IP request that triggered this error.\n3. Check if the error indicates resource exhaustion or DoS/DDoS patterns."
+                }
+            },
+            {
+                8002, new ForensicAdvice
+                {
+                    EventId = 8002,
+                    Title = "Nginx Web Server Error Log",
+                    Category = "Web Application / Server Error",
+                    Severity = "Warning",
+                    Description = "An entry from the Nginx error log, typically recording upstream processing timeouts, connection failures, or security checks.",
+                    InvestigationSteps = "1. Analyze the upstream response or local path permission issues.\n2. Extract client IP and virtual host to determine target scope.\n3. Check if it points to scanning or automated directory enumeration scripts."
+                }
+            },
+            {
+                8003, new ForensicAdvice
+                {
+                    EventId = 8003,
+                    Title = "Web Server Access Log (HTTP Request)",
+                    Category = "Web Application / Access Log",
+                    Severity = "Info",
+                    Description = "A standard HTTP request logged by Apache or Nginx.",
+                    InvestigationSteps = "1. Check the HTTP response status code (e.g. 200, 301, 404).\n2. Inspect the request URL path and query parameters for unusual characters.\n3. Verify if the User-Agent is a legitimate browser or an automated scanner."
+                }
+            },
+            {
+                8004, new ForensicAdvice
+                {
+                    EventId = 8004,
+                    Title = "Potential Web Application Exploit Attempt",
+                    Category = "Web Application / Exploit Attempt",
+                    Severity = "Critical",
+                    Description = "A web access request contains indicators of common web attacks (SQLi, XSS, Path Traversal, RCE, web shell access, or sensitive file exposure).",
+                    InvestigationSteps = "1. Check the HTTP response status code. If 200, check the server files for unauthorized modification; if 403/404, it was likely unsuccessful.\n2. Examine request parameters and HTTP payload for attack signatures (e.g., SELECT/UNION, ../../, cmd.exe, eval()).\n3. Scan the host directory for web shells or newly modified files around the event time."
+                }
+            },
+            {
+                9001, new ForensicAdvice
+                {
+                    EventId = 9001,
+                    Title = "Generic Text Log Entry",
+                    Category = "Application Logs / General",
+                    Severity = "Info",
+                    Description = "An entry imported from a general application or service text-based log file.",
+                    InvestigationSteps = "1. Review the full text message to find the source application context.\n2. Filter for failure keywords (e.g., error, exception, fail, unauthorized).\n3. Correlate with system/security logs around the same time range."
+                }
             }
         };
 
