@@ -95,9 +95,24 @@ namespace WinLog
                     {
                         message = record.FormatDescription();
                     }
-                    catch
+                    catch { }
+
+                    if (string.IsNullOrEmpty(message))
                     {
-                        message = "Event parameters: " + string.Join(", ", record.Properties.Select(p => p.Value));
+                        try
+                        {
+                            var props = record.Properties.Select(p => p.Value?.ToString()).Where(v => !string.IsNullOrEmpty(v)).ToList();
+                            if (props.Count > 0)
+                            {
+                                message = string.Join(" | ", props);
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (string.IsNullOrEmpty(message))
+                    {
+                        message = $"Event ID {eventId} from {record.ProviderName} (No description available)";
                     }
 
                     string xml = string.Empty;
